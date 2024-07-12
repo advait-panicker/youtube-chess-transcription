@@ -8,11 +8,13 @@ Created on Fri Jul  1 12:50:38 2024
 from pytube import YouTube
 import cv2
 from PIL import Image
-from tensorflow_chessbot import ChessboardPredictor
-import chessboard_finder
-from helper_functions import shortenFEN
+from tensorflow_chessbot_imported import tensorflow_chessbot
+import tensorflow_chessbot_imported.chessboard_finder as chessboard_finder
+from tensorflow_chessbot_imported.helper_functions import shortenFEN
+import argparse
 
-def YouTubeDownload(video_url, destination_folder):
+
+def download_video(video_url, destination_folder):
     # Create a YouTube object
     yt = YouTube(video_url)
     video = yt.streams.filter(progressive=True, file_extension='mp4').first()
@@ -21,6 +23,8 @@ def YouTubeDownload(video_url, destination_folder):
 
 def find_chessboard(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    chessboard = image
+    gray_chess = gray
     
     # Apply adaptive thresholding
     thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
@@ -55,8 +59,6 @@ def find_chessboard(image):
 
 def extract_fen(video_path):
 
-    fenlist = []
-    currentfen = ''
     
     # Open the video file
     video = cv2.VideoCapture(video_path)
@@ -66,35 +68,59 @@ def extract_fen(video_path):
         print("Error opening video file")
         return
     
+    print("initializing predictor")
     # Initialize predictor, takes a while, but only needed once
-    predictor = ChessboardPredictor()
+    predictor = tensorflow_chessbot.ChessboardPredictor()
+    print("predictor initialized")
                 
     # Initialize frame count
     count = 0
+    fenlist = [""]
 
-    # Read frames until the video ends
-    while True:
-        # Read a frame
-        success, frame = video.read()
+    # store the fens of the nearby frames
+    look_around_threshold = 4
+    look_around_frames = [""] * (look_around_threshold * 2 + 1)
 
-        # If frame is read correctly, save it
-        if success:
-            chessboard, gray_chess = find_chessboard(frame)
-            image = Image.fromarray(gray_chess)
-            tiles, corners = chessboard_finder.findGrayscaleTilesInImage(image)
-            if corners is not None:
-                fen, tile_certainties = predictor.getPrediction(tiles)
-                short_fen = shortenFEN(fen)
-                fen = short_fen + ' w - - 0 1'
-                if fen != currentfen:
-                    fenlist.append(fen)
-                    currentfen = fen
-                    count += 1
-                    print(count)
-        else:
-            # Break the loop if we've reached the end of the video
-            break
     
+    frames_read = 0
+
+    print("Reading frames for fen strings:")
+    # Read frames until the video ends
+    reached_end = False
+    while not reached_end:
+        # read every x fens
+        for i in range(look_around_threshold * 2 + 1):
+                
+            # Read a frame
+            success, frame = video.read()
+
+            # If frame is read correctly, save it
+            if success:
+                chessboard, gray_chess = find_chessboard(frame)
+                image = Image.fromarray(gray_chess)
+                tiles, corners = chessboard_finder.findGrayscaleTilesInImage(image)
+                if corners is not None:
+                    # we are now reading a frame for a fen
+                    fen, tile_certainties = predictor.getPrediction(tiles)
+                    short_fen = shortenFEN(fen)
+                    fen = short_fen + ' w - - 0 1'
+                    look_around_frames[i] = fen
+                else:
+                    # we have not read a fen yet. go to the next frame
+                    i -= 1
+            else:
+                # Break the loop if we've reached the end of the video
+                reached_end = True
+                break
+        
+        if (not reached_end):
+            # after reading x frames, let's check if they are equal to each other
+            if all(map(lambda s: s == look_around_frames[0], look_around_frames)):
+                if (look_around_frames[0] != fenlist[-1]):
+                    fenlist.append(look_around_frames[0])
+                    count += 1
+                    print(look_around_frames[0])
+        
     predictor.close()
         
     # Release the video capture object
@@ -102,16 +128,39 @@ def extract_fen(video_path):
 
     return(fenlist, count)
 
-def main(video_path):
+def run_extracter(video_path, output_name):
     fenlist, count = extract_fen(video_path)
     
+    destination_folder = "./"
     # Open a file in write mode
-    with open(destination_folder + FileName + " fenlist.txt", "w") as file:
+    with open(destination_folder + output_name + " fenlist.txt", "w") as file:
         # Write each item of the list to the file, one per line
         for fen in fenlist:
             file.write(f"{fen}\n")
     
-if __name__ == '__main__':
-    main(video_path)
+def main():
+    parser = argparse.ArgumentParser(description="Download and extract YouTube videos.")
     
+    subparsers = parser.add_subparsers(dest="command")
     
+    # Subparser for download command
+    parser_download = subparsers.add_parser("download", help="Download YouTube video")
+    parser_download.add_argument("youtube_url", type=str, help="URL of the YouTube video")
+    parser_download.add_argument("name", type=str, help="Name to save the downloaded video")
+    
+    # Subparser for extract command
+    parser_extract = subparsers.add_parser("extract", help="Extract fens from video file")
+    parser_extract.add_argument("video_path", type=str, help="Path to the video file")
+    parser_extract.add_argument("output_name", type=str, help="Name to save the extracted fens")
+    
+    args = parser.parse_args()
+    
+    if args.command == "download":
+        download_video(args.youtube_url, args.name)
+    elif args.command == "extract":
+        run_extracter(args.video_path, args.output_name)
+    else:
+        parser.print_help()
+
+if __name__ == "__main__":
+    main()
