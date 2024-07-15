@@ -11,6 +11,8 @@ type_of_file = input("Type the file extension you want the transcript to be in (
 #txtformatter = TextFormatter()
 #video_id = "LzmSy2N5GaQ"
 transcript = YouTubeTranscriptApi.get_transcript(video_id)
+print(transcript) 
+#transcript variable can be used directly
 
 #txt = txtformatter.format_transcript(transcript)
 
@@ -32,4 +34,3 @@ formatted = formatter.format_transcript(transcript)
 
 with open(f'transcript{type_of_file}', 'w', encoding='utf-8') as file:
     file.write(formatted)
-
