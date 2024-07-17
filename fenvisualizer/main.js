@@ -73,7 +73,7 @@ function draw() {
     // image(pieceImages['wr'], 0, 0, TILESIZE, TILESIZE);
     // let currentFENLine = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     let currentFENLine = FENLines[currentFENLineIdx];
-    let rows = currentFENLine.split(' ')[0].split("/");
+    let rows = currentFENLine.split(/\s/g)[0].split("/");
 
     if (rows.length != 8) {
         stroke(0);
@@ -92,6 +92,7 @@ function draw() {
                 continue;
             }
             let pieceName = `${c == c.toUpperCase() ? 'w' : 'b'}${c.toLowerCase()}`;
+            console.log(pieceName);
             image(pieceImages[pieceName], x, y, TILESIZE, TILESIZE);
             x += TILESIZE;
         }
