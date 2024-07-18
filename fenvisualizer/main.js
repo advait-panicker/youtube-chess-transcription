@@ -53,8 +53,8 @@ document.getElementById("fenIdxInput").addEventListener("change", function() {
     if (isNaN(FENLineIdx) || FENLineIdx <= 0 || FENLineIdx > FENLines.length) {
         return;
     }
-    currentFENLineIdx = FENLineIdx;
-    fenIdxDisplay.innerText = currentFENLineIdx;
+    currentFENLineIdx = FENLineIdx - 1;
+    fenIdxDisplay.innerText = FENLineIdx;
     updateDisplay(FENLines[currentFENLineIdx]);
 });
 
