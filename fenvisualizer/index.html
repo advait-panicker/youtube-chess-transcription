@@ -7,8 +7,14 @@
 </head>
 <body>
     <!-- Upload Text file -->
+    <label for="timestampChk">Include Timestamps</label>
+    <input type="checkbox" name="timestampChk" id="timestampChk">
     <input type="file" id="fileInput" accept=".txt">
     <button id="submit">Submit</button>
+    <br>
+    <label for="ytURL">YouTube Video URL:</label>
+    <input type="text" name="ytURL" id="ytURL">
+    <button id="setVideoBtn">Load Video</button>
     <h1>Position #: <span id="fenIdx">0</span>/<span id="fenIdxMax">0</span></h1>
     <input type="number" id="fenIdxInput" placeholder="Goto index">
     <br>
