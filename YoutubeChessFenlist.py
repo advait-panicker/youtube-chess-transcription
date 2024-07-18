@@ -8,9 +8,9 @@ Created on Fri Jul  1 12:50:38 2024
 from pytube import YouTube
 import cv2
 from PIL import Image
-from tensorflow_chessbot_imported import tensorflow_chessbot
-import tensorflow_chessbot_imported.chessboard_finder as chessboard_finder
-from tensorflow_chessbot_imported.helper_functions import shortenFEN
+import tensorflow_chessbot
+from tensorflow_chessbot import chessboard_finder
+from tensorflow_chessbot.helper_functions import shortenFEN
 import argparse
 
 
