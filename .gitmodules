@@ -1,4 +1,0 @@
-[submodule "tensorflow_chessbot"]
-	path = tensorflow_chessbot
-	url = https://github.com/Elucidation/tensorflow_chessbot.git
-	branch = chessfenbot
