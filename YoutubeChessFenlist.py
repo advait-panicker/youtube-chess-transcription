@@ -8,7 +8,7 @@ Created on Fri Jul  1 12:50:38 2024
 from pytube import YouTube
 import cv2
 from PIL import Image
-import tensorflow_chessbot
+from tensorflow_chessbot import tensorflow_chessbot
 from tensorflow_chessbot import chessboard_finder
 from tensorflow_chessbot.helper_functions import shortenFEN
 import argparse
@@ -57,11 +57,22 @@ def find_chessboard(image):
         
     return chessboard, gray_chess
 
+
+def get_frame_rate(video_path):
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: Cannot open video file {video_path}")
+        return None
+    frame_rate = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
+    return frame_rate
+
 def extract_fen(video_path):
 
     
     # Open the video file
     video = cv2.VideoCapture(video_path)
+    frame_rate = get_frame_rate(video_path)
 
     # Check if the video opened successfully
     if not video.isOpened():
@@ -74,15 +85,16 @@ def extract_fen(video_path):
     print("predictor initialized")
                 
     # Initialize frame count
-    count = 0
+    frame_count = 0
     fenlist = [""]
+    output_list = [""]
+
+    current_frame_count = 0
 
     # store the fens of the nearby frames
-    look_around_threshold = 4
+    look_around_threshold = 3
     look_around_frames = [""] * (look_around_threshold * 2 + 1)
 
-    
-    frames_read = 0
 
     print("Reading frames for fen strings:")
     # Read frames until the video ends
@@ -96,6 +108,7 @@ def extract_fen(video_path):
 
             # If frame is read correctly, save it
             if success:
+                frame_count += 1
                 chessboard, gray_chess = find_chessboard(frame)
                 image = Image.fromarray(gray_chess)
                 tiles, corners = chessboard_finder.findGrayscaleTilesInImage(image)
@@ -110,6 +123,7 @@ def extract_fen(video_path):
                     i -= 1
             else:
                 # Break the loop if we've reached the end of the video
+                print("reached the end of the video!!")
                 reached_end = True
                 break
         
@@ -117,19 +131,20 @@ def extract_fen(video_path):
             # after reading x frames, let's check if they are equal to each other
             if all(map(lambda s: s == look_around_frames[0], look_around_frames)):
                 if (look_around_frames[0] != fenlist[-1]):
+                    output_string = look_around_frames[0] + " " + str(frame_count / frame_rate)
+                    output_list.append(output_string)
                     fenlist.append(look_around_frames[0])
-                    count += 1
-                    print(look_around_frames[0])
-        
+                    print(output_string)
+
     predictor.close()
         
     # Release the video capture object
     video.release()
 
-    return(fenlist, count)
+    return output_list
 
 def run_extracter(video_path, output_name):
-    fenlist, count = extract_fen(video_path)
+    fenlist = extract_fen(video_path)
     
     destination_folder = "./"
     # Open a file in write mode
