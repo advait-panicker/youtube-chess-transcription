@@ -8,7 +8,7 @@ Created on Fri Jul  1 12:50:38 2024
 from pytube import YouTube
 import cv2
 from PIL import Image
-import tensorflow_chessbot
+from tensorflow_chessbot import tensorflow_chessbot
 from tensorflow_chessbot import chessboard_finder
 from tensorflow_chessbot.helper_functions import shortenFEN
 import argparse
