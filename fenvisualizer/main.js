@@ -1,16 +1,61 @@
 // Read in text file on pressing submit button with id "submit"
 let FENLines = [];
 const fenIdxDisplay = document.getElementById("fenIdx");
+const fenLengthDisplay = document.getElementById("fenIdxMax");
 let currentFENLineIdx = 0;
+
+const fenDisplay = document.getElementById("currFenStr");
+const errorDisplay = document.getElementById("strErrMsg");
+
+const deleteBtn = document.getElementById("delete");
+const insertBtn = document.getElementById("insert");
+
+deleteBtn.addEventListener("click", function() {
+    if (FENLines.length == 0) {
+        return;
+    }
+    FENLines.splice(currentFENLineIdx, 1);
+    if (currentFENLineIdx >= FENLines.length) {
+        currentFENLineIdx = FENLines.length-1;
+        fenIdxDisplay.innerText = currentFENLineIdx+1;
+    }
+    fenLengthDisplay.innerText = FENLines.length;
+    updateDisplay(FENLines[currentFENLineIdx]);
+    if (FENLines.length == 0) {
+        deleteBtn.disabled = true;
+    }
+});
+
+insertBtn.addEventListener("click", function() {
+    FENLines.splice(currentFENLineIdx, 0, "");
+    fenIdxDisplay.innerText = currentFENLineIdx+1;
+    fenLengthDisplay.innerText = FENLines.length;
+    updateDisplay(FENLines[currentFENLineIdx]);
+});
+
+function updateDisplay(str) {
+    const err = isValidFEN(str);
+    if (err != "") {
+        errorDisplay.innerText = err;
+        fenDisplay.style.backgroundColor = "rgba(255, 0, 0, 0.1)";
+        return;
+    }
+    errorDisplay.innerText = "";
+    fenDisplay.style.backgroundColor = "white";
+    fenDisplay.value = str;
+    FENLines[currentFENLineIdx] = str;
+    displayBoard(str);
+}
 
 // event listener for number input change
 document.getElementById("fenIdxInput").addEventListener("change", function() {
     FENLineIdx = parseInt(this.value);
-    if (isNaN(FENLineIdx) || FENLineIdx < 0 || FENLineIdx >= FENLines.length) {
+    if (isNaN(FENLineIdx) || FENLineIdx <= 0 || FENLineIdx > FENLines.length) {
         return;
     }
-    currentFENLineIdx = FENLineIdx;
-    fenIdxDisplay.innerText = currentFENLineIdx;
+    currentFENLineIdx = FENLineIdx - 1;
+    fenIdxDisplay.innerText = FENLineIdx;
+    updateDisplay(FENLines[currentFENLineIdx]);
 });
 
 document.getElementById("submit").addEventListener("click", function() {
@@ -21,7 +66,9 @@ document.getElementById("submit").addEventListener("click", function() {
         FENLines = text.split("\n");
         currentFENLineIdx = 0;
         fenIdxDisplay.innerText = "1";
-        document.getElementById("fenIdxMax").innerText = FENLines.length;
+        fenLengthDisplay.innerText = FENLines.length;
+        deleteBtn.disabled = false;
+        updateDisplay(FENLines[currentFENLineIdx]);
     }
     reader.readAsText(file);
 });
@@ -41,9 +88,40 @@ function setup() {
     textSize(40);
 }
 
+function isValidFEN(fen) {
+    if (fen == "") {
+        return "";
+    }
+    let parts = fen.split(/\s/g);
+    let board = parts[0];
+    let rows = board.split("/");
+    if (rows.length != 8) {
+        return `Wrong number of rows: ${rows.length}`;
+    }
+    let validPieces = ['p', 'r', 'n', 'b', 'q', 'k', 'P', 'R', 'N', 'B', 'Q', 'K'];
+    for (let i = 0; i < rows.length; i++) {
+        let row = rows[i];
+        let count = 0;
+        for (let j = 0; j < row.length; j++) {
+            let c = row[j];
+            if (c >= '1' && c <= '8') {
+                count += parseInt(c);
+            } else {
+                if (!validPieces.includes(c)) {
+                    return `Invalid piece ${c} at row ${i+1} col ${j+1}`;
+                }
+                count++;
+            }
+        }
+        if (count != 8) {
+            return `Invalid row length at row ${i+1}`;
+        }
+    }
+    return "";
+}
 // rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 
-function draw() {
+function displayBoard(fen) {
     let x = 0;
     let y = 0;
     noStroke();
@@ -61,26 +139,10 @@ function draw() {
         y += TILESIZE;
     }
 
-    if (FENLines.length == 0 || currentFENLineIdx >= FENLines.length || currentFENLineIdx < 0) {
-        stroke(0);
-        fill(255);
-        text("Please upload a file", 0, height/2);
-        return;
-    }
-
     x = 0;
     y = 0;
-    // image(pieceImages['wr'], 0, 0, TILESIZE, TILESIZE);
-    // let currentFENLine = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    let currentFENLine = FENLines[currentFENLineIdx];
-    let rows = currentFENLine.split(/\s/g)[0].split("/");
 
-    if (rows.length != 8) {
-        stroke(0);
-        fill(255);
-        text("Invalid FEN string", 0, height/2);
-        return;
-    }
+    let rows = fen.split(/\s/g)[0].split("/");
 
     for (let j = 0; j < rows.length; j++) {
         let row = rows[j];
@@ -92,7 +154,7 @@ function draw() {
                 continue;
             }
             let pieceName = `${c == c.toUpperCase() ? 'w' : 'b'}${c.toLowerCase()}`;
-            console.log(pieceName);
+            // console.log(pieceName);
             image(pieceImages[pieceName], x, y, TILESIZE, TILESIZE);
             x += TILESIZE;
         }
@@ -103,6 +165,9 @@ function draw() {
 
 document.addEventListener('keydown', function(event) {
     // right arrow key
+    if (document.activeElement.tagName == "INPUT") {
+        return;
+    }
     if (event.keyCode == 39) {
         currentFENLineIdx++;
     } else if (event.keyCode == 37) {
@@ -112,4 +177,10 @@ document.addEventListener('keydown', function(event) {
     }
     currentFENLineIdx = Math.min(FENLines.length-1, Math.max(0, currentFENLineIdx));
     fenIdxDisplay.innerText = currentFENLineIdx + 1;
+    fenDisplay.value = FENLines[currentFENLineIdx];
+    updateDisplay(FENLines[currentFENLineIdx]);
+});
+
+fenDisplay.addEventListener("input", function() {
+    updateDisplay(fenDisplay.value);
 });
