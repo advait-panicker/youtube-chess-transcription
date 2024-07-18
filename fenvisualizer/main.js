@@ -1,10 +1,37 @@
 // Read in text file on pressing submit button with id "submit"
 let FENLines = [];
 const fenIdxDisplay = document.getElementById("fenIdx");
+const fenLengthDisplay = document.getElementById("fenIdxMax");
 let currentFENLineIdx = 0;
 
 const fenDisplay = document.getElementById("currFenStr");
 const errorDisplay = document.getElementById("strErrMsg");
+
+const deleteBtn = document.getElementById("delete");
+const insertBtn = document.getElementById("insert");
+
+deleteBtn.addEventListener("click", function() {
+    if (FENLines.length == 0) {
+        return;
+    }
+    FENLines.splice(currentFENLineIdx, 1);
+    if (currentFENLineIdx >= FENLines.length) {
+        currentFENLineIdx = FENLines.length-1;
+        fenIdxDisplay.innerText = currentFENLineIdx+1;
+    }
+    fenLengthDisplay.innerText = FENLines.length;
+    updateDisplay(FENLines[currentFENLineIdx]);
+    if (FENLines.length == 0) {
+        deleteBtn.disabled = true;
+    }
+});
+
+insertBtn.addEventListener("click", function() {
+    FENLines.splice(currentFENLineIdx, 0, "");
+    fenIdxDisplay.innerText = currentFENLineIdx+1;
+    fenLengthDisplay.innerText = FENLines.length;
+    updateDisplay(FENLines[currentFENLineIdx]);
+});
 
 function updateDisplay(str) {
     const err = isValidFEN(str);
@@ -39,7 +66,8 @@ document.getElementById("submit").addEventListener("click", function() {
         FENLines = text.split("\n");
         currentFENLineIdx = 0;
         fenIdxDisplay.innerText = "1";
-        document.getElementById("fenIdxMax").innerText = FENLines.length;
+        fenLengthDisplay.innerText = FENLines.length;
+        deleteBtn.disabled = false;
         updateDisplay(FENLines[currentFENLineIdx]);
     }
     reader.readAsText(file);
@@ -61,11 +89,14 @@ function setup() {
 }
 
 function isValidFEN(fen) {
+    if (fen == "") {
+        return "";
+    }
     let parts = fen.split(/\s/g);
     let board = parts[0];
     let rows = board.split("/");
     if (rows.length != 8) {
-        return `Too many rows: ${rows.length}`;
+        return `Wrong number of rows: ${rows.length}`;
     }
     let validPieces = ['p', 'r', 'n', 'b', 'q', 'k', 'P', 'R', 'N', 'B', 'Q', 'K'];
     for (let i = 0; i < rows.length; i++) {
