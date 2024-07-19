@@ -10,14 +10,41 @@ const errorDisplay = document.getElementById("strErrMsg");
 const deleteBtn = document.getElementById("delete");
 const insertBtn = document.getElementById("insert");
 
-deleteBtn.addEventListener("click", function() {
+var tag = document.createElement('script');
+tag.src = 'https://www.youtube.com/iframe_api';
+var firstScriptTag = document.getElementsByTagName('script')[0];
+firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+var player;
+function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+        events: {
+            'onReady': onPlayerReady,
+        }
+    });
+}
+
+function onPlayerReady(event) {
+    event.target.playVideo(); // this doesn't work lmao
+}
+document.getElementById('setVideoBtn').addEventListener('click', () => {
+    if (!document.getElementById('ytURL').value.includes('watch?v=')) {
+        alert('Invalid URL');
+        return;
+    }
+    let videoID = document.getElementById('ytURL').value.split('?v=')[1].split('&')[0];
+    console.log(videoID);
+    player.loadVideoById(videoID);
+});
+
+deleteBtn.addEventListener("click", function () {
     if (FENLines.length == 0) {
         return;
     }
     FENLines.splice(currentFENLineIdx, 1);
     if (currentFENLineIdx >= FENLines.length) {
-        currentFENLineIdx = FENLines.length-1;
-        fenIdxDisplay.innerText = currentFENLineIdx+1;
+        currentFENLineIdx = FENLines.length - 1;
+        fenIdxDisplay.innerText = currentFENLineIdx + 1;
     }
     fenLengthDisplay.innerText = FENLines.length;
     updateDisplay(FENLines[currentFENLineIdx]);
@@ -26,14 +53,17 @@ deleteBtn.addEventListener("click", function() {
     }
 });
 
-insertBtn.addEventListener("click", function() {
+insertBtn.addEventListener("click", function () {
     FENLines.splice(currentFENLineIdx, 0, "");
-    fenIdxDisplay.innerText = currentFENLineIdx+1;
+    fenIdxDisplay.innerText = currentFENLineIdx + 1;
     fenLengthDisplay.innerText = FENLines.length;
     updateDisplay(FENLines[currentFENLineIdx]);
 });
 
-function updateDisplay(str) {
+function updateDisplay(parts) {
+    console.log(parts);
+    let str = parts[0];
+    let time = parts[parts.length - 1];
     const err = isValidFEN(str);
     if (err != "") {
         errorDisplay.innerText = err;
@@ -43,12 +73,15 @@ function updateDisplay(str) {
     errorDisplay.innerText = "";
     fenDisplay.style.backgroundColor = "white";
     fenDisplay.value = str;
-    FENLines[currentFENLineIdx] = str;
+    FENLines[currentFENLineIdx] = parts;
     displayBoard(str);
+    if (document.getElementById("timestampChk").checked) {
+        player.seekTo(time);
+    }
 }
 
 // event listener for number input change
-document.getElementById("fenIdxInput").addEventListener("change", function() {
+document.getElementById("fenIdxInput").addEventListener("change", function () {
     FENLineIdx = parseInt(this.value);
     if (isNaN(FENLineIdx) || FENLineIdx <= 0 || FENLineIdx > FENLines.length) {
         return;
@@ -58,12 +91,12 @@ document.getElementById("fenIdxInput").addEventListener("change", function() {
     updateDisplay(FENLines[currentFENLineIdx]);
 });
 
-document.getElementById("submit").addEventListener("click", function() {
+document.getElementById("submit").addEventListener("click", function () {
     var file = document.getElementById("fileInput").files[0];
     var reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = function (e) {
         var text = reader.result;
-        FENLines = text.split("\n");
+        FENLines = text.split("\n").map(line => line.trim().split(/\s/g));
         currentFENLineIdx = 0;
         fenIdxDisplay.innerText = "1";
         fenLengthDisplay.innerText = FENLines.length;
@@ -80,7 +113,7 @@ const pieceImageNames = ['wp', 'wr', 'wn', 'wb', 'wq', 'wk', 'bp', 'br', 'bn', '
 let pieceImages = {};
 
 function setup() {
-    createCanvas(TILESIZE*8,TILESIZE*8);
+    createCanvas(TILESIZE * 8, TILESIZE * 8);
     for (let i = 0; i < pieceImageNames.length; i++) {
         let piece = pieceImageNames[i];
         pieceImages[piece] = loadImage(`assets/${piece}.png`);
@@ -108,13 +141,13 @@ function isValidFEN(fen) {
                 count += parseInt(c);
             } else {
                 if (!validPieces.includes(c)) {
-                    return `Invalid piece ${c} at row ${i+1} col ${j+1}`;
+                    return `Invalid piece ${c} at row ${i + 1} col ${j + 1}`;
                 }
                 count++;
             }
         }
         if (count != 8) {
-            return `Invalid row length at row ${i+1}`;
+            return `Invalid row length at row ${i + 1}`;
         }
     }
     return "";
@@ -127,7 +160,7 @@ function displayBoard(fen) {
     noStroke();
     for (let i = 0; i < 8; i++) {
         for (let j = 0; j < 8; j++) {
-            if ((i+j)%2 == 0) {
+            if ((i + j) % 2 == 0) {
                 fill(255, 229, 207);
             } else {
                 fill(158, 73, 2);
@@ -163,7 +196,7 @@ function displayBoard(fen) {
     }
 }
 
-document.addEventListener('keydown', function(event) {
+document.addEventListener('keydown', function (event) {
     // right arrow key
     if (document.activeElement.tagName == "INPUT") {
         return;
@@ -175,12 +208,12 @@ document.addEventListener('keydown', function(event) {
     } else {
         return;
     }
-    currentFENLineIdx = Math.min(FENLines.length-1, Math.max(0, currentFENLineIdx));
+    currentFENLineIdx = Math.min(FENLines.length - 1, Math.max(0, currentFENLineIdx));
     fenIdxDisplay.innerText = currentFENLineIdx + 1;
     fenDisplay.value = FENLines[currentFENLineIdx];
     updateDisplay(FENLines[currentFENLineIdx]);
 });
 
-fenDisplay.addEventListener("input", function() {
+fenDisplay.addEventListener("input", function () {
     updateDisplay(fenDisplay.value);
 });
