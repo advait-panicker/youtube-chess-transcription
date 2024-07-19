@@ -4,11 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FEN Visualizer</title>
+    <style>
+        iframe {
+            float: right;
+        }
+    </style>
 </head>
 <body>
     <!-- Upload Text file -->
+    <iframe id="player"
+        width="640" height="360"
+        src="https://www.youtube.com/embed/hI3jY1TtOAg?enablejsapi=1&rel=0"
+    ></iframe>
+
+    <!-- <iframe id="player" width="914" height="514" src="https://www.youtube.com/embed/-XTTVMu6pmQ" allowfullscreen></iframe> -->
+    <label for="timestampChk">Include Timestamps</label>
+    <input type="checkbox" name="timestampChk" id="timestampChk">
     <input type="file" id="fileInput" accept=".txt">
     <button id="submit">Submit</button>
+    <br>
+    <label for="ytURL">YouTube Video URL:</label>
+    <input type="text" name="ytURL" id="ytURL">
+    <button id="setVideoBtn">Load Video</button>
     <h1>Position #: <span id="fenIdx">0</span>/<span id="fenIdxMax">0</span></h1>
     <input type="number" id="fenIdxInput" placeholder="Goto index">
     <br>
