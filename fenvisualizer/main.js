@@ -10,6 +10,8 @@ const errorDisplay = document.getElementById("strErrMsg");
 const deleteBtn = document.getElementById("delete");
 const insertBtn = document.getElementById("insert");
 
+const useTimestampsChkBox = document.getElementById("timestampChk");
+
 var tag = document.createElement('script');
 tag.src = 'https://www.youtube.com/iframe_api';
 var firstScriptTag = document.getElementsByTagName('script')[0];
@@ -22,11 +24,68 @@ function onYouTubeIframeAPIReady() {
             'onReady': onPlayerReady,
         }
     });
+    iframeWindow = player.getIframe().contentWindow;
 }
 
 function onPlayerReady(event) {
     event.target.playVideo(); // this doesn't work lmao
 }
+
+function binarySearch(val) {
+    let left = 0;
+    let right = FENLines.length - 1;
+    while (left <= right) {
+        let mid = Math.floor((left + right) / 2);
+        if (FENLines[mid][FENLines[mid].length - 1] == val) {
+            return mid;
+        }
+        if (FENLines[mid][FENLines[mid].length - 1] < val) {
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+    return right;
+}
+
+// https://stackoverflow.com/questions/65511523/how-to-listen-to-time-change-events-with-the-youtube-iframe-player-api
+var iframeWindow;
+var lastTimeUpdate = 0;
+window.addEventListener("message", function (event) {
+    // Check that the event was sent from the YouTube IFrame.
+    if (FENLines.length == 0 || useTimestampsChkBox.checked == false) {
+        return;
+    }
+    if (event.source === player.getIframe().contentWindow) {
+        var data;
+        try {
+            data = JSON.parse(event.data);
+        } catch (e) {
+            console.log(e);
+            return;
+        }
+        // console.log(data);
+        // The "infoDelivery" event is used by YT to transmit any
+        // kind of information change in the player,
+        // such as the current time or a playback quality change.
+        if (
+            data.event === "infoDelivery" &&
+            data.info &&
+            data.info.currentTime
+        ) {
+            // currentTime is emitted very frequently,
+            // but we only care about whole second changes.
+            var time = data.info.currentTime;
+            if (Math.abs(time - lastTimeUpdate) >= 0.1) {
+                lastTimeUpdate = time;
+                currentFENLineIdx = binarySearch(time);
+                fenIdxDisplay.innerText = currentFENLineIdx + 1;
+                updateDisplay(FENLines[currentFENLineIdx], updateVideo=false);
+            }
+        }
+    }
+});
+
 document.getElementById('setVideoBtn').addEventListener('click', () => {
     if (!document.getElementById('ytURL').value.includes('watch?v=')) {
         alert('Invalid URL');
@@ -54,13 +113,14 @@ deleteBtn.addEventListener("click", function () {
 });
 
 insertBtn.addEventListener("click", function () {
-    FENLines.splice(currentFENLineIdx, 0, "");
+    currentFENLineIdx = binarySearch(player.getCurrentTime()) + 1;
+    FENLines.splice(currentFENLineIdx, 0, ["", player.getCurrentTime()]);
     fenIdxDisplay.innerText = currentFENLineIdx + 1;
     fenLengthDisplay.innerText = FENLines.length;
     updateDisplay(FENLines[currentFENLineIdx]);
 });
 
-function updateDisplay(parts) {
+function updateDisplay(parts, updateVideo=true) {
     console.log(parts);
     let str = parts[0];
     let time = parts[parts.length - 1];
@@ -75,7 +135,7 @@ function updateDisplay(parts) {
     fenDisplay.value = str;
     FENLines[currentFENLineIdx] = parts;
     displayBoard(str);
-    if (document.getElementById("timestampChk").checked) {
+    if (updateVideo && document.getElementById("timestampChk").checked) {
         player.seekTo(time);
     }
 }
@@ -215,5 +275,6 @@ document.addEventListener('keydown', function (event) {
 });
 
 fenDisplay.addEventListener("input", function () {
-    updateDisplay(fenDisplay.value);
+    FENLines[currentFENLineIdx][0] = fenDisplay.value;
+    updateDisplay(FENLines[currentFENLineIdx]);
 });
