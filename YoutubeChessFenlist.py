@@ -5,7 +5,9 @@ Created on Fri Jul  1 12:50:38 2024
 @author: Audrey Wang
 """
 
-from pytube import YouTube
+import yt_dlp
+import re
+import os
 import cv2
 from PIL import Image
 from tensorflow_chessbot import tensorflow_chessbot
@@ -14,12 +16,31 @@ from tensorflow_chessbot.helper_functions import shortenFEN
 import argparse
 
 
-def download_video(video_url, destination_folder):
-    # Create a YouTube object
-    yt = YouTube(video_url)
-    video = yt.streams.filter(progressive=True, file_extension='mp4').first()
-    video.download(output_path=destination_folder)
-    return None
+def get_direct_video_url(youtube_url):
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]/best[ext=mp4]/worst[ext=mp4]'
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(youtube_url, download=False)
+        
+        # Try to find the video URL in the formats
+        if 'formats' in info_dict:
+            for fmt in info_dict['formats']:
+                if fmt.get('url'):
+                    return fmt['url']
+        
+        raise KeyError("No URL found in the provided video information.")
+
+
+def download_video(youtube_url, download_folder):
+    os.makedirs(download_folder, exist_ok=True)
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]/best[ext=mp4]/worst[ext=mp4]',
+        'outtmpl': os.path.join(download_folder, '%(title)s.%(ext)s')
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([youtube_url])
+
 
 def find_chessboard(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -58,21 +79,35 @@ def find_chessboard(image):
     return chessboard, gray_chess
 
 
-def get_frame_rate(video_path):
-    cap = cv2.VideoCapture(video_path)
+def get_frame_rate(cap: cv2.VideoCapture):
     if not cap.isOpened():
-        print(f"Error: Cannot open video file {video_path}")
+        print(f"Error: Cannot open video file {cap}")
         return None
     frame_rate = cap.get(cv2.CAP_PROP_FPS)
-    cap.release()
     return frame_rate
 
-def extract_fen(video_path):
 
+def extract_fen_from_frame(predictor, frame):
+    success = False
+    fen = ""
+    chessboard, gray_chess = find_chessboard(frame)
+    image = Image.fromarray(gray_chess)
+    tiles, corners = chessboard_finder.findGrayscaleTilesInImage(image)
+
+    if corners is not None:
+        # we are now reading a frame for a fen
+        success = True
+        fen, tile_certainties = predictor.getPrediction(tiles)
+        short_fen = shortenFEN(fen)
+        fen = short_fen + ' w - - 0 1'
+
+    return success, fen
+
+
+def extract_fens_from_video(video):
     
     # Open the video file
-    video = cv2.VideoCapture(video_path)
-    frame_rate = get_frame_rate(video_path)
+    frame_rate = get_frame_rate(video)
 
     # Check if the video opened successfully
     if not video.isOpened():
@@ -83,18 +118,15 @@ def extract_fen(video_path):
     # Initialize predictor, takes a while, but only needed once
     predictor = tensorflow_chessbot.ChessboardPredictor()
     print("predictor initialized")
-                
+
     # Initialize frame count
     frame_count = 0
     fenlist = [""]
     output_list = [""]
 
-    current_frame_count = 0
-
     # store the fens of the nearby frames
     look_around_threshold = 3
     look_around_frames = [""] * (look_around_threshold * 2 + 1)
-
 
     print("Reading frames for fen strings:")
     # Read frames until the video ends
@@ -102,30 +134,22 @@ def extract_fen(video_path):
     while not reached_end:
         # read every x fens
         for i in range(look_around_threshold * 2 + 1):
-                
             # Read a frame
             success, frame = video.read()
 
-            # If frame is read correctly, save it
-            if success:
-                frame_count += 1
-                chessboard, gray_chess = find_chessboard(frame)
-                image = Image.fromarray(gray_chess)
-                tiles, corners = chessboard_finder.findGrayscaleTilesInImage(image)
-                if corners is not None:
-                    # we are now reading a frame for a fen
-                    fen, tile_certainties = predictor.getPrediction(tiles)
-                    short_fen = shortenFEN(fen)
-                    fen = short_fen + ' w - - 0 1'
-                    look_around_frames[i] = fen
-                else:
-                    # we have not read a fen yet. go to the next frame
-                    i -= 1
-            else:
+            if not success:
                 # Break the loop if we've reached the end of the video
                 print("reached the end of the video!!")
                 reached_end = True
                 break
+
+            # otherwise read the frame
+            frame_count += 1
+            recieved_fen_success, fen_string = extract_fen_from_frame(predictor, frame)
+            if (recieved_fen_success):
+                look_around_frames[i] = fen_string
+            else:
+                i -= 1
         
         if (not reached_end):
             # after reading x frames, let's check if they are equal to each other
@@ -136,23 +160,28 @@ def extract_fen(video_path):
                     fenlist.append(look_around_frames[0])
                     print(output_string)
 
+    # release objects
     predictor.close()
-        
-    # Release the video capture object
     video.release()
 
     return output_list
 
-def run_extracter(video_path, output_name):
-    fenlist = extract_fen(video_path)
-    
+
+def run_extracter(video_capture, output_name):
+    fenlist = extract_fens_from_video(video_capture)
     destination_folder = "./"
     # Open a file in write mode
     with open(destination_folder + output_name + " fenlist.txt", "w") as file:
         # Write each item of the list to the file, one per line
         for fen in fenlist:
             file.write(f"{fen}\n")
+
+
+def is_valid_url(url):
+    regex = re.compile(r'^(?:http|ftp)s?://', re.IGNORECASE)
+    return re.match(regex, url) is not None
     
+
 def main():
     parser = argparse.ArgumentParser(description="Download and extract YouTube videos.")
     
@@ -164,16 +193,24 @@ def main():
     parser_download.add_argument("name", type=str, help="Name to save the downloaded video")
     
     # Subparser for extract command
-    parser_extract = subparsers.add_parser("extract", help="Extract fens from video file")
-    parser_extract.add_argument("video_path", type=str, help="Path to the video file")
+    parser_extract = subparsers.add_parser("extract", help="Extract fens from video (can either provide URL or File Path)")
+    parser_extract.add_argument("video_path", type=str, help="Path to the video (URL or File Path)")
     parser_extract.add_argument("output_name", type=str, help="Name to save the extracted fens")
-    
+
     args = parser.parse_args()
     
     if args.command == "download":
+        print("Downloading video")
         download_video(args.youtube_url, args.name)
     elif args.command == "extract":
-        run_extracter(args.video_path, args.output_name)
+        video = args.video_path
+        if (is_valid_url(args.video_path)):
+            print(str(args.video_path) + " is a valid URL")
+            video = get_direct_video_url(args.video_path)
+
+        video_cap = cv2.VideoCapture(video)        
+        run_extracter(video_cap, args.output_name)
+
     else:
         parser.print_help()
 
