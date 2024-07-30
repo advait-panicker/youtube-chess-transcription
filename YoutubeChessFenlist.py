@@ -294,7 +294,7 @@ def main():
         with open(args.fenlist, "r") as file:
             fens = file.readlines()
             fens = [fen.strip() for fen in fens]
-            fen_tree = filter_FENs(fens)
+            filtered_fens = filter_FENs(fens)
         with open(args.output_path, "w") as file:
             for fen in filtered_fens:
                 file.write(f"{fen}\n")
