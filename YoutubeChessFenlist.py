@@ -13,6 +13,7 @@ from PIL import Image
 from tensorflow_chessbot import tensorflow_chessbot
 from tensorflow_chessbot import chessboard_finder
 from tensorflow_chessbot.helper_functions import shortenFEN
+import chess
 import argparse
 
 
@@ -103,6 +104,75 @@ def extract_fen_from_frame(predictor, frame):
 
     return success, fen
 
+class BoardNode:
+    def __init__(self, fen, time=0):
+        self.board = chess.Board(' '.join(fen.split()[:-1]))
+        self.fen = fen
+        self.prev = None
+        self.next = []
+        self.time = time
+    def insert_next(self, board_node):
+        # insert into self.next by time using binary search
+        left = 0
+        right = len(self.next)-1
+        while left < right:
+            mid = (left + right) // 2
+            if self.next[mid].time < board_node.time:
+                left = mid + 1
+            else:
+                right = mid - 1
+        if self.next[left].time < board_node.time:
+            self.next.insert(left+1, board_node)
+        else:
+            self.next.insert(left, board_node)
+
+def get_move(board1 : chess.Board, fen2 : str):
+    # print("Starting: ", board1.fen())
+    board1.set_castling_fen('KQkq')
+    for _ in range(2):
+        for move in board1.legal_moves:
+            board1.push(move)
+            # print(" --- ", board1.fen())
+            if board1.fen().split(' ')[0] == fen2.split(' ')[0]:
+                board1.pop()
+                return move.uci()
+            board1.pop()
+        board1.turn = not board1.turn
+    return ''
+
+def filter_FENs(fens : list[str]):
+    boards = [chess.Board(' '.join(fen.split()[:-1])) for fen in fens]
+    indices = [0]
+    out = [fens[0]]
+    for i in range(1, len(fens)):
+        print(f"Filtering FENs: {i+1}/{len(fens)}", end='\r')
+        for j in range(len(out)-1, -1, -1):
+            if get_move(boards[indices[j]], fens[i]) != '':
+                out.append(fens[i])
+                indices.append(i)
+                break
+    return out
+
+def get_fen_tree(fens : list[str]) -> BoardNode:
+    head = BoardNode(fens[0])
+    curr = head
+    for fen in fens[1:]:
+        while curr is not None:
+            next_node = curr
+            if get_move(curr.board, fen) != '':
+                new_node = BoardNode(fen)
+                new_node.prev = curr
+                curr.insert_next(new_node)
+                next_node = new_node
+                break
+            curr = next_node
+    return head
+
+def get_fen_list(node : BoardNode) -> list[str]:
+    out = [node.fen]
+    for next_node in node.next:
+        out += get_fen_list(next_node)
+    return out
 
 def extract_fens_from_video(video):
     
@@ -197,6 +267,10 @@ def main():
     parser_extract.add_argument("video_path", type=str, help="Path to the video (URL or File Path)")
     parser_extract.add_argument("output_name", type=str, help="Name to save the extracted fens")
 
+    parser_extract = subparsers.add_parser("filter", help="Filter frames to include valid FENs")
+    parser_extract.add_argument("fenlist", type=str, help="Path to the fenlist file")
+    parser_extract.add_argument("output_path", type=str, help="Path to the output file")
+
     args = parser.parse_args()
     
     if args.command == "download":
@@ -210,7 +284,20 @@ def main():
 
         video_cap = cv2.VideoCapture(video)        
         run_extracter(video_cap, args.output_name)
-
+    elif args.command == "filter":
+        if args.fenlist is None or args.output_path is None:
+            parser.print_help()
+            return
+        if args.fenlist == args.output_path:
+            print("Input and output files cannot be the same")
+            return
+        with open(args.fenlist, "r") as file:
+            fens = file.readlines()
+            fens = [fen.strip() for fen in fens]
+            fen_tree = filter_FENs(fens)
+        with open(args.output_path, "w") as file:
+            for fen in filtered_fens:
+                file.write(f"{fen}\n")
     else:
         parser.print_help()
 
