@@ -9,6 +9,7 @@ import yt_dlp
 import re
 import os
 import cv2
+import numpy as np
 from PIL import Image
 from tensorflow_chessbot import tensorflow_chessbot
 from tensorflow_chessbot import chessboard_finder
@@ -42,7 +43,67 @@ def download_video(youtube_url, download_folder):
         ydl.download([youtube_url])
 
 
-def find_chessboard(image):
+def get_chessboard_coords(image, debug=False):
+    # print("getting chessboard coords")
+    # Convert the image to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    if debug:
+        cv2.imshow('Grayscale Image', gray)
+        cv2.waitKey(0)
+
+    # Use GaussianBlur to reduce noise and improve edge detection
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    
+    if debug:
+        cv2.imshow('Blurred Image', blurred)
+        cv2.waitKey(0)
+
+    # Detect edges using Canny
+    edges = cv2.Canny(blurred, 50, 150)
+    
+    if debug:
+        cv2.imshow('Edges', edges)
+        cv2.waitKey(0)
+
+    # Find contours
+    contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if debug:
+        contour_image = image.copy()
+        cv2.drawContours(contour_image, contours, -1, (0, 255, 0), 2)
+        cv2.imshow('Contours', contour_image)
+        cv2.waitKey(0)
+
+    # Iterate through contours and find the bounding box of the largest one
+    max_area = 0
+    best_bbox = None
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        area = w * h
+        if area > max_area:
+            max_area = area
+            best_bbox = (x, y, x + w, y + h)
+
+    return best_bbox
+
+
+def extract_chessboard_from_coords(image, chessboard_coords):
+    # Check if chessboard_coords is valid
+    if chessboard_coords is None:
+        print("Chessboard not detected")
+        return None
+
+    # Chessboard coordinates (top-left x, top-left y, bottom-right x, bottom-right y)
+    x1, y1, x2, y2 = chessboard_coords
+
+    # Crop the chessboard from the image
+    chessboard = image[y1:y2, x1:x2]
+
+    gray = cv2.cvtColor(chessboard, cv2.COLOR_BGR2GRAY)
+    return gray
+
+def find_chessboard_old(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     chessboard = image
     gray_chess = gray
@@ -90,10 +151,21 @@ def get_frame_rate(cap: cv2.VideoCapture):
 def extract_fen_from_frame(predictor, frame):
     success = False
     fen = ""
-    chessboard, gray_chess = find_chessboard(frame)
-    image = Image.fromarray(gray_chess)
-    tiles, corners = chessboard_finder.findGrayscaleTilesInImage(image)
 
+    chessboard_coords = get_chessboard_coords(frame)
+    gray_chessboard_new = extract_chessboard_from_coords(frame, chessboard_coords)
+    chessboard_image_array = Image.fromarray(gray_chessboard_new)
+    
+    # cv2.imshow('This is the final chessboard', chessboard_image_array)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    tiles, corners = chessboard_finder.findGrayscaleTilesInImage(chessboard_image_array)
+
+
+    # chessboard, gray_chess = find_chessboard_old(frame)
+    # image = Image.fromarray(gray_chess)
+    # tiles, corners = chessboard_finder.findGrayscaleTilesInImage(image)
+    
     if corners is not None:
         # we are now reading a frame for a fen
         success = True
@@ -148,6 +220,7 @@ def extract_fens_from_video(video):
             recieved_fen_success, fen_string = extract_fen_from_frame(predictor, frame)
             if (recieved_fen_success):
                 look_around_frames[i] = fen_string
+                # print(fen_string)
             else:
                 i -= 1
         
