@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Little module that let's users enter a youtube URL -->
+    <div id="ytURLModule" class="module column">
+        <h1>Youtube Chess Transcription</h1>
+        <div class="row">
+            <input type="text" name="ytURL" id="ytURL" placeholder="Youtube Video URL">
+            <button id="setVideoBtn">Load Video</button>
+        </div>
+    </div>
+    <div id="currentFENConfig" class="module column">
+        <h1>Position #: 
+            <input type="number" id="fenIdxInput" placeholder="">
+            /<span id="fenIdxMax">0</span>
+        </h1>
+        <input type="text" id="currFenStr" style="width: 500px;" placeholder="Current FEN String">
+        <span id="strErrMsg" style="color: red;"></span>
+        <div class="row">
+            <button id="delete" disabled>Delete</button>
+            <button id="insert">Insert</button>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js" integrity="sha512-d6sc8kbZEtA2LwB9m/ck0FhvyUwVfdmvTeyJRprmj7Wg9wRFtHDIpr6qk4g/y3Ix3O9I6KHIv6SGu9f7RaP1Gw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="testfenstring.js"></script>
+    <script src="ui.js"></script>
+    <script src="tree.js"></script>
+</body>
+</html>
