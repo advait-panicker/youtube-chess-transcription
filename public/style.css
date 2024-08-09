@@ -90,3 +90,8 @@ canvas, #currentFENConfig {
 #ytURLModule {
   display: none;
 }
+
+#player {
+  position: fixed;
+  right: 0;
+}

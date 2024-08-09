@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <iframe id="player"
+        width="640" height="360"
+        src="https://www.youtube.com/embed/YteWv1UVN8U?enablejsapi=1&rel=0"
+    ></iframe>
     <!-- Little module that let's users enter a youtube URL -->
     <div id="ytURLModule" class="module column">
         <h1>Youtube Chess Transcription</h1>
@@ -23,13 +27,17 @@
         <input type="text" id="currFenStr" style="width: 500px;" placeholder="Current FEN String">
         <span id="strErrMsg" style="color: red;"></span>
         <div class="row">
-            <button id="delete" disabled>Delete</button>
-            <button id="insert">Insert</button>
+            <button id="insertBtn">Insert Child</button>
+            <button id="deleteBtn">Delete Subtree</button>
         </div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js" integrity="sha512-d6sc8kbZEtA2LwB9m/ck0FhvyUwVfdmvTeyJRprmj7Wg9wRFtHDIpr6qk4g/y3Ix3O9I6KHIv6SGu9f7RaP1Gw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="testfenstring.js"></script>
     <script src="ui.js"></script>
+    <script src="ui/feneditor.js"></script>
+    <script src="ui/traverse.js"></script>
+    <script src="ui/modifytree.js"></script>
+    <script src="ui/ytinit.js"></script>
     <script src="tree.js"></script>
 </body>
 </html>

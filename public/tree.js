@@ -2,6 +2,12 @@ let fov = 1;
 let cameraX = 0;
 let cameraY = 0;
 
+let targetX = 0;
+let targetY = 0;
+let targetFov = 1;
+let startTime = 0;
+const lerpTime = 0.3;
+
 const pieceImageNames = ['wp', 'wr', 'wn', 'wb', 'wq', 'wk', 'bp', 'br', 'bn', 'bb', 'bq', 'bk'];
 
 let pieceImages = {};
@@ -28,32 +34,29 @@ class BoardNode {
     constructor(json) {
         if (json) {
             this.fromJSON(json);
-            this.initWidths();
-            this.reposition();
+            this.resetDisplay();
         } else {
             this.x = 0;
             this.y = 0;
             this.width = 1;
             this.children = [];
+            this.parent = null;
+            this.index = 0;
         }
-        this.focused = false;
     }
     display(w) {
         let [sx, sy] = scaled_point(this.x, this.y);
         strokeWeight(w/20);
+        stroke(255);
         this.children.forEach(child => {
             let [ex, ey] = scaled_point(child.x, child.y);
-            stroke(255);
             bent_line(sx, sy, ex, ey);
-            child.display(w);
         });
-        if (this.focused) {
-            strokeWeight(w/10);
-            stroke(255);
-            noFill();
-            rect(sx - w / 2, sy - w / 2, w, w);
-        }
         drawBoard(this.fen, sx, sy, w);
+    }
+    resetWidths() {
+        this.width = 1;
+        this.children.forEach(child => child.resetWidths());
     }
     initWidths() {
         this.children.forEach(child => child.initWidths());
@@ -67,25 +70,44 @@ class BoardNode {
         }
         this.width = this.children.reduce((acc, child) => acc + child.width, 1);
     }
-    reposition() {
+    resetX() {
+        this.x = 0;
+        this.children.forEach(child => child.resetX());
+    }
+    initX() {
         let x = this.x - this.width / 2;
         this.children.forEach(child => {
             x += child.width / 2;
             child.x = x;
             x += child.width / 2;
-            child.reposition();
+            child.initX();
         });
     }
-    fromJSON(json, y=0) {
+    resetDisplay() {
+        this.resetX();
+        this.initX();
+        this.resetWidths();
+        this.initWidths();
+    }
+    fromJSON(json, y=0, parent=null) {
         this.fen = json.fen;
+        this.time = json.time;
         this.x = 0;
         this.y = y;
         this.width = 1;
+        this.parent = parent;
         this.children = json.next.map(child => {
             let node = new BoardNode();
-            node.fromJSON(child, y + 1);
+            node.fromJSON(child, y + 1, this);
             return node;
         });
+    }
+    toJSON() {
+        return {
+            fen: this.fen,
+            time: this.time,
+            next: this.children.map(child => child.toJSON())
+        };
     }
     preOrderTraversal() {
         let result = [];
@@ -95,14 +117,166 @@ class BoardNode {
     }
 }
 
-let tree;
-let treeNodes = [];
+class TreeManager {
+    constructor(json) {
+        if (!json) {
+            json = {
+                "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1",
+                "time": 0,
+                "next": []
+            }
+        }
+        this.tree = new BoardNode(json);
+        this.focused = this.tree;
+        this.focusIndex = 0;
+        this.update();
+    }
 
-const defaultFENString = {
-    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1",
-    "time": 0,
-    "next": []
+    binarySearch(time) {
+        let left = 0;
+        let right = this.treeNodes.length - 1;
+        while (left <= right) {
+            let mid = Math.floor((left + right) / 2);
+            if (this.treeNodes[mid].time == time) {
+                return mid;
+            }
+            if (this.treeNodes[mid].time < time) {
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+        return Math.max(right, 0);
+    }
+
+    update() {
+        this.treeNodes = this.tree.preOrderTraversal();
+        for (let i = 0; i < this.treeNodes.length; i++) {
+            this.treeNodes[i].index = i;
+        }
+        this.tree.resetDisplay();
+        this.updateFENDisplay();
+        this.updateFENLineIdxDisplay();
+        this.updateMaxFENLinesDisplay();
+    }
+
+    setFocusIndex(index, zoom=true, seek=true) {
+        if (index < 0 || index >= this.treeNodes.length) {
+            return;
+        }
+        this.focusIndex = index;
+        this.focus(this.treeNodes[index], zoom, seek);
+    }
+    
+    focusNext() {
+        this.setFocusIndex(this.focusIndex + 1);
+    }
+    
+    focusPrev() {
+        this.setFocusIndex(this.focusIndex - 1);
+    }
+    
+    focusParent() {
+        if (this.focused.parent) {
+            this.setFocusIndex(this.focused.parent.index);
+        }
+    }
+    
+    focusChild() {
+        if (this.focused.children.length > 0) {
+            this.setFocusIndex(this.focused.children[this.focused.children.length-1].index);
+        }
+    }
+
+    updateFENDisplay() {
+        fenDisplay.value = this.focused.fen;
+    }
+
+    updateFENLineIdxDisplay() {
+        fenIdxDisplay.value = this.focusIndex + 1;
+    }
+    
+    updateMaxFENLinesDisplay() {
+        fenLengthDisplay.innerText = this.treeNodes.length;
+    }
+    
+    display(w) {
+        let [sx, sy] = scaled_point(this.focused.x, this.focused.y);
+        if (this.focused) {
+            noFill();
+            strokeWeight(w/15);
+            stroke(255);
+            // ellipse(sx, sy, 1.5 * w, 1.5 * w);
+            // strokeWeight(w/20);
+            // stroke(0);
+            rect(sx - w / 2, sy - w / 2, w, w);
+        }
+
+        function helper(curr) {
+            curr.display(w);
+            curr.children.forEach(child => helper(child));
+        }
+        helper(this.tree);
+
+        strokeWeight(w/20);
+        stroke(255);
+
+        if (this.focused) {
+            drawBoard(this.focused.fen, focusedBoardSize / 2, height - focusedBoardSize / 2, focusedBoardSize);
+        }
+    }
+
+    focus(node, zoom=true, seek=true) {
+        if (this.focused == node) {
+            if (!zoom) {
+                return;
+            }
+            targetFov = 1;
+        }
+        targetX = node.x;
+        targetY = node.y;
+        this.focused = node;
+        this.focusIndex = node.index;
+        startTime = millis();
+        this.updateFENDisplay();
+        this.updateFENLineIdxDisplay();
+        if (seek) {
+            player.seekTo(this.focused.time);
+        }
+    }
+    
+    // TODO: Add time parameter
+    addChild(node, fen) {
+        let child = new BoardNode({fen: fen, next: []});
+        child.y = node.y + 1;
+        child.parent = node;
+        node.children.push(child);
+        this.update();
+        this.focus(child);
+        this.updateMaxFENLinesDisplay();
+    }
+    
+    deleteSubtreeRecursive(node) {
+        node.children.forEach(child => this.deleteSubtreeRecursive(child));
+        node.children = [];
+        node.parent.children = node.parent.children.filter(child => child != node);
+        delete this;
+    }
+
+    deleteSubtree(node) {
+        if (node == this.tree) {
+            alert('Cannot delete root node');
+            return;
+        }
+        let parent = node.parent;
+        this.deleteSubtreeRecursive(node);
+        this.update();
+        this.focus(parent);
+        this.updateMaxFENLinesDisplay();
+    }
 }
+
+let gui = new TreeManager();
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
@@ -111,8 +285,7 @@ function setup() {
         pieceImages[piece] = loadImage(`assets/${piece}.png`);
     }
     textSize(40);
-    tree = new BoardNode(testJSONFENTree);
-    treeNodes = tree.preOrderTraversal();
+    gui = new TreeManager(testJSONFENTree);
 }
 
 function windowResized() {
@@ -162,13 +335,6 @@ function drawBoard(fen, x, y, w) {
     }
 }
 
-let targetX = 0;
-let targetY = 0;
-let targetFov = 1;
-let startTime = 0;
-let lerpTime = 0.2;
-let lastFocused = null;
-
 const focusedBoardSize = 450;
 
 function draw() {
@@ -183,10 +349,7 @@ function draw() {
         cameraY = lerp(startY, targetY, t);
         fov = lerp(fov, targetFov, t);
     }
-    tree.display(200/fov);
-    if (lastFocused) {
-        drawBoard(lastFocused.fen, focusedBoardSize / 2, height - focusedBoardSize / 2, focusedBoardSize);
-    }
+    gui.display(200/fov);
 }
 
 function mouseWheel(event) {
@@ -201,24 +364,6 @@ function mouseWheel(event) {
 function mouseDragged() {
     cameraX -= (mouseX - pmouseX) * fov / width;
     cameraY -= (mouseY - pmouseY) * fov / height;
-    if (lastFocused) {
-        lastFocused.focused = false;
-        lastFocused = null;
-    }
-}
-
-function focus(node) {
-    targetX = node.x;
-    targetY = node.y;
-    if (lastFocused == node || lastFocused == null) {
-        targetFov = 1;
-    }
-    if (lastFocused) {
-        lastFocused.focused = false;
-    }
-    node.focused = true;
-    lastFocused = node;
-    startTime = millis();
 }
 
 function distanceSquared(x1, y1, x2, y2) {
@@ -236,12 +381,19 @@ function mouseReleased() {
         return;
     }
     let [x, y] = unscale_point(mouseX, mouseY);
-    let {d, node} = treeNodes.reduce((acc, node) => {
+    let {d, node} = gui.treeNodes.reduce((acc, node) => {
         let d = distanceSquared(x, y, node.x, node.y);
         return d < acc.d ? {d, node} : acc;
     }, {d: Infinity, node: null});
     if (node && d < 0.5) {
-        console.log(d);
-        focus(node);
+        gui.focus(node);
+        gui.updateFENLineIdxDisplay();
+        gui.updateFENDisplay();
+    }
+}
+
+function keyPressed() {
+    if (keyCode === ENTER) {
+        gui.focus(gui.focused);
     }
 }
