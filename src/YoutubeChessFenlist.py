@@ -16,6 +16,8 @@ from tensorflow_chessbot.helper_functions import shortenFEN
 import chess
 import argparse
 import json
+import time
+import imageio
 
 def get_direct_video_url(youtube_url):
     ydl_opts = {
@@ -79,6 +81,27 @@ def find_chessboard(image):
         
     return chessboard, gray_chess
 
+def find_chessboard_corners(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    chessboard_contour = None
+    for contour in contours:
+        peri = cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
+        
+        if len(approx) == 4:
+            chessboard_contour = approx
+            break
+    if chessboard_contour is None:
+        return None
+    
+    x, y, w, h = cv2.boundingRect(chessboard_contour)
+    return (x, y, w, h)
 
 def get_frame_rate(cap: cv2.VideoCapture):
     if not cap.isOpened():
@@ -104,6 +127,11 @@ def extract_fen_from_frame(predictor, frame):
 
     return success, fen
 
+def extract_fen_from_frame_with_corners(predictor, frame, corners):
+    x, y, w, h = corners
+    fen, certainties = predictor.getPredictionFromImage(frame[y:y+h, x:x+w])
+    return shortenFEN(fen) + ' w - - 0 1'
+
 def get_move(board1 : chess.Board, fen2 : str):
     # print("Starting: ", board1.fen())
     board1.set_castling_fen('KQkq')
@@ -119,23 +147,29 @@ def get_move(board1 : chess.Board, fen2 : str):
     return ''
 
 class BoardNode:
-    def __init__(self, fen, time=0):
-        self.board = chess.Board(' '.join(fen.split()[:-1]))
+    def __init__(self, fen, prev_move=''):
         self.fen = fen
         self.prev = None
-        self.time = time
+        self.prev_move = prev_move
+        self.times = []
         self.next = []
         self.possbile_next = {}
+        if fen == '':
+            self.board = None
+            return
+        self.board = chess.Board(' '.join(fen.split()[:-1]))
         self.board.set_castling_fen('KQkq')
         for _ in range(2):
             for move in self.board.legal_moves:
+                san = self.board.san(move)
                 self.board.push(move)
-                self.possbile_next[self.board.fen().split(' ')[0]] = move.uci()
+                self.possbile_next[self.board.fen().split(' ')[0]] = san
                 self.board.pop()
             self.board.turn = not self.board.turn
     def get_possbile_move(self, fen):
         return self.possbile_next.get(fen.split()[0], '')
     def insert_next(self, board_node):
+        board_node.prev = self
         self.next.append(board_node)
 
 def filter_FENs(fens : list[str]):
@@ -152,20 +186,76 @@ def filter_FENs(fens : list[str]):
     return out
 
 def get_fen_tree(fens : list[str]) -> BoardNode:
-    head = BoardNode(fens[0])
-    curr = head
-    for i, fen in enumerate(fens[1:]):
-        print(i, len(fens)-1, end='\r')
-        next_node = curr
-        while curr is not None:
-            if curr.get_possbile_move(fen) != '':
-                new_node = BoardNode(fen)
-                new_node.prev = curr
-                curr.insert_next(new_node)
-                next_node = new_node
-                break
-            curr = curr.prev
-        curr = next_node
+    print(f"Filtering {len(fens)} FENs")
+
+    # seen = set()
+    # no_duplicates = []
+    # for fen in fens:
+    #     fen_part1 = fen.split()[0]
+    #     if fen_part1 in seen:
+    #         continue
+    #     seen.add(fen_part1)
+    #     no_duplicates.append(fen)
+    # fens = no_duplicates
+
+    print(f"Removed duplicates to now {len(fens)} FENs")
+    # head = BoardNode(fens[0])
+    # curr = head
+    # for i, fen in enumerate(fens[1:]):
+    #     print(i, len(fens)-1, end='\r')
+    #     next_node = curr
+    #     while curr is not None:
+    #         possible_move = curr.get_possbile_move(fen)
+    #         if possible_move != '':
+    #             new_node = BoardNode(fen, possible_move)
+    #             curr.insert_next(new_node)
+    #             next_node = new_node
+    #             break
+    #         curr = curr.prev
+    #     curr = next_node
+    
+    # head = BoardNode(fens[0])
+    # possible_next = {next_fen: (head, move) for next_fen, move in head.possbile_next.items()}
+    # for fen in fens[1:]:
+    #     fen_part = fen.split()[0]
+    #     if fen_part not in possible_next:
+    #         continue
+    #     node = BoardNode(fen)
+    #     for next_fen, move in node.possbile_next.items():
+    #         possible_next[next_fen] = (node, move)
+    #     prev, move = possible_next[fen_part]
+    #     # print(prev, move)
+    #     prev.insert_next(node)
+
+    seen = {}
+    nodes = []
+    for fen in fens:
+        fen_parts = fen.split()
+        fen_part = fen_parts[0]
+        time = float(fen_parts[-1])
+        if fen_part not in seen:
+            seen[fen_part] = BoardNode(fen)
+            nodes.append(seen[fen_part])
+        seen[fen_part].times.append(time)
+
+    head = BoardNode('')
+    head.times.append(0.0)
+    head.next = [nodes[0]]
+    # head = nodes[0]
+    possible_next = {next_fen: (nodes[0], move) for next_fen, move in nodes[0].possbile_next.items()}
+    for node in nodes[1:]:
+        fen = node.fen.split()[0]
+        for next_fen, move in node.possbile_next.items():
+            possible_next[next_fen] = (node, move)
+        if fen not in possible_next:
+            head.next.append(node)
+            continue
+        prev, move = possible_next[fen]
+        prev.insert_next(node)
+
+    for i in range(len(head.next)-1, -1, -1):
+        if head.next[i].next == []:
+            head.next.pop(i)
     return head
 
 def get_fen_list(node : BoardNode) -> list[str]:
@@ -179,7 +269,8 @@ def get_json_fen_tree(tree : BoardNode) -> str:
     def to_dict(node : BoardNode) -> dict:
         out = {
             "fen": node.fen,
-            "time": node.time,
+            "times": node.times,
+            "prev_move": node.prev_move,
             "next": []
         }
         for next_node in node.next:
@@ -187,7 +278,7 @@ def get_json_fen_tree(tree : BoardNode) -> str:
         return out
     return json.dumps(to_dict(tree))
 
-def extract_fens_from_video(video):
+def extract_fens_from_video_old(video):
     
     # Open the video file
     frame_rate = get_frame_rate(video)
@@ -249,6 +340,72 @@ def extract_fens_from_video(video):
 
     return output_list
 
+def extract_fens_from_video(video):
+    times = [time.time()]
+    def timing(msg):
+        times.append(time.time())
+        print(f"{msg}: {times[-1] - times[-2]}")
+
+    frame_rate = get_frame_rate(video)
+    timing("Got frame rate")
+
+    # Check if the video opened successfully
+    if not video.isOpened():
+        print("Error opening video file")
+        return
+    
+    # Initialize predictor, takes a while, but only needed once
+    predictor = tensorflow_chessbot.ChessboardPredictor()
+    timing("Initialized predictor")
+
+    frames = []
+    success, frame = video.read()
+    frame_count = 0
+    skip = 60
+    while success:
+        # success, frame = video.read()
+        # frame_count += 1
+        # if frame_count % skip == 0:
+        #     frames.append(frame)
+        frame_count += skip
+        success, frame = video.read()
+        video.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+        print(f"Reading frames: {frame_count}", end='\r')
+    timing("Read frames")
+
+    # frame_starting_index = 1
+    # corners = find_chessboard_corners(frames[0])
+    # while frame_starting_index < len(frames) and corners is None:
+    #     corners = find_chessboard_corners(frames[frame_starting_index])
+    #     frame_starting_index += 1
+    # timing("Found starting index")
+
+    predictions = []
+    for i, frame in enumerate(frames):
+        frame_count = i * skip
+        success, fen = extract_fen_from_frame(predictor, frame)
+        if success:
+            predictions.append((fen, frame_count))
+    timing("Extracted fens")
+
+    filtered_predictions = []
+
+    look_around_threshold = 3
+    left = 0
+    right = 0
+    while right < len(predictions):
+        while right < len(predictions) and predictions[right][0] == predictions[left][0]:
+            right += 1
+        if right - left >= look_around_threshold:
+            fen, frame_count = predictions[right-1]
+            filtered_predictions.append(fen + " " + str(frame_count / frame_rate))
+        left = right
+    timing("Filtered predictions")
+
+    predictor.close()
+    video.release()
+
+    return filtered_predictions
 
 def run_extracter(video_capture, output_name):
     fenlist = extract_fens_from_video(video_capture)
@@ -317,7 +474,6 @@ def main():
         with open(args.fenlist, "r") as file:
             fens = file.readlines()
             fens = [fen.strip() for fen in fens]
-            print(f"Filtering {len(fens)} FENs")
             tree = get_fen_tree(fens)
             print("Listing fens")
             # filtered_fens = get_fen_list(tree)

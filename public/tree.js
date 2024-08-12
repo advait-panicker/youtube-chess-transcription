@@ -41,7 +41,7 @@ class BoardNode {
             this.width = 1;
             this.children = [];
             this.parent = null;
-            this.index = 0;
+            // this.index = 0;
         }
     }
     display(w) {
@@ -91,7 +91,7 @@ class BoardNode {
     }
     fromJSON(json, y=0, parent=null) {
         this.fen = json.fen;
-        this.time = json.time;
+        this.times = json.times;
         this.x = 0;
         this.y = y;
         this.width = 1;
@@ -105,7 +105,7 @@ class BoardNode {
     toJSON() {
         return {
             fen: this.fen,
-            time: this.time,
+            times: this.times,
             next: this.children.map(child => child.toJSON())
         };
     }
@@ -122,7 +122,7 @@ class TreeManager {
         if (!json) {
             json = {
                 "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1",
-                "time": 0,
+                "times": [],
                 "next": []
             }
         }
@@ -134,26 +134,31 @@ class TreeManager {
 
     binarySearch(time) {
         let left = 0;
-        let right = this.treeNodes.length - 1;
+        let right = this.timeMapping.length - 1;
         while (left <= right) {
             let mid = Math.floor((left + right) / 2);
-            if (this.treeNodes[mid].time == time) {
+            if (this.timeMapping[mid].time == time) {
                 return mid;
             }
-            if (this.treeNodes[mid].time < time) {
+            if (this.timeMapping[mid].time < time) {
                 left = mid + 1;
             } else {
                 right = mid - 1;
             }
         }
-        return Math.max(right, 0);
+        return this.timeMapping[Math.max(right, 0)].index;
     }
 
     update() {
         this.treeNodes = this.tree.preOrderTraversal();
-        for (let i = 0; i < this.treeNodes.length; i++) {
-            this.treeNodes[i].index = i;
+        this.timeMapping = [{time: 0, index: 0}];
+        for (let i = 1; i < this.treeNodes.length; i++) {
+            // this.treeNodes[i].index = this.timeMapping.length - 1;
+            for (let j = 0; j < this.treeNodes[i].times.length; j++) {
+                this.timeMapping.push({time: this.treeNodes[i].times[j], index: i});
+            }
         }
+        this.timeMapping.sort((a, b) => a.time - b.time);
         this.tree.resetDisplay();
         this.updateFENDisplay();
         this.updateFENLineIdxDisplay();
@@ -161,15 +166,17 @@ class TreeManager {
     }
 
     setFocusIndex(index, zoom=true, seek=true) {
-        if (index < 0 || index >= this.treeNodes.length) {
+        if (index < 0 || index >= this.timeMapping.length) {
             return;
         }
         this.focusIndex = index;
-        this.focus(this.treeNodes[index], zoom, seek);
+        this.focus(this.treeNodes[this.timeMapping[index].index], zoom, seek);
     }
     
     focusNext() {
+        console.log(this.focusIndex)
         this.setFocusIndex(this.focusIndex + 1);
+        console.log(this.focusIndex)
     }
     
     focusPrev() {
@@ -178,13 +185,13 @@ class TreeManager {
     
     focusParent() {
         if (this.focused.parent) {
-            this.setFocusIndex(this.focused.parent.index);
+            this.focus(this.focused.parent);
         }
     }
     
     focusChild() {
         if (this.focused.children.length > 0) {
-            this.setFocusIndex(this.focused.children[this.focused.children.length-1].index);
+            this.focus(this.focused.children[this.focused.children.length-1]);
         }
     }
 
@@ -193,7 +200,7 @@ class TreeManager {
     }
 
     updateFENLineIdxDisplay() {
-        fenIdxDisplay.value = this.focusIndex + 1;
+        fenIdxDisplay.value = 0 + 1;
     }
     
     updateMaxFENLinesDisplay() {
@@ -218,11 +225,11 @@ class TreeManager {
         }
         helper(this.tree);
 
-        strokeWeight(w/20);
-        stroke(255);
-
         if (this.focused) {
-            drawBoard(this.focused.fen, focusedBoardSize / 2, height - focusedBoardSize / 2, focusedBoardSize);
+            stroke(255);
+            strokeWeight(2);
+            rect(10, height - focusedBoardSize - 10, focusedBoardSize, focusedBoardSize);
+            drawBoard(this.focused.fen, focusedBoardSize / 2 + 10, height - focusedBoardSize / 2 - 10, focusedBoardSize);
         }
     }
 
@@ -236,12 +243,12 @@ class TreeManager {
         targetX = node.x;
         targetY = node.y;
         this.focused = node;
-        this.focusIndex = node.index;
+        // this.focusIndex = node.index;
         startTime = millis();
         this.updateFENDisplay();
         this.updateFENLineIdxDisplay();
         if (seek) {
-            player.seekTo(this.focused.time);
+            player.seekTo(this.focused.times[0]);
         }
     }
     
@@ -297,6 +304,11 @@ function drawBoard(fen, x, y, w) {
     noStroke();
     x -= w / 2;
     y -= w / 2;
+    if (fen == '') {
+        fill(17);
+        rect(x, y, w, w)
+        return;
+    }
     const xOrg = x;
     const yOrg = y;
     for (let i = 0; i < 8; i++) {
