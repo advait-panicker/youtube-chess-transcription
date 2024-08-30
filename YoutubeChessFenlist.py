@@ -15,7 +15,7 @@ from tensorflow_chessbot import chessboard_finder
 from tensorflow_chessbot.helper_functions import shortenFEN
 import chess
 import argparse
-
+import json
 
 def get_direct_video_url(youtube_url):
     ydl_opts = {
@@ -104,28 +104,6 @@ def extract_fen_from_frame(predictor, frame):
 
     return success, fen
 
-class BoardNode:
-    def __init__(self, fen, time=0):
-        self.board = chess.Board(' '.join(fen.split()[:-1]))
-        self.fen = fen
-        self.prev = None
-        self.next = []
-        self.time = time
-    def insert_next(self, board_node):
-        # insert into self.next by time using binary search
-        left = 0
-        right = len(self.next)-1
-        while left < right:
-            mid = (left + right) // 2
-            if self.next[mid].time < board_node.time:
-                left = mid + 1
-            else:
-                right = mid - 1
-        if self.next[left].time < board_node.time:
-            self.next.insert(left+1, board_node)
-        else:
-            self.next.insert(left, board_node)
-
 def get_move(board1 : chess.Board, fen2 : str):
     # print("Starting: ", board1.fen())
     board1.set_castling_fen('KQkq')
@@ -139,6 +117,26 @@ def get_move(board1 : chess.Board, fen2 : str):
             board1.pop()
         board1.turn = not board1.turn
     return ''
+
+class BoardNode:
+    def __init__(self, fen, time=0):
+        self.board = chess.Board(' '.join(fen.split()[:-1]))
+        self.fen = fen
+        self.prev = None
+        self.time = time
+        self.next = []
+        self.possbile_next = {}
+        self.board.set_castling_fen('KQkq')
+        for _ in range(2):
+            for move in self.board.legal_moves:
+                self.board.push(move)
+                self.possbile_next[self.board.fen().split(' ')[0]] = move.uci()
+                self.board.pop()
+            self.board.turn = not self.board.turn
+    def get_possbile_move(self, fen):
+        return self.possbile_next.get(fen.split()[0], '')
+    def insert_next(self, board_node):
+        self.next.append(board_node)
 
 def filter_FENs(fens : list[str]):
     boards = [chess.Board(' '.join(fen.split()[:-1])) for fen in fens]
@@ -156,16 +154,18 @@ def filter_FENs(fens : list[str]):
 def get_fen_tree(fens : list[str]) -> BoardNode:
     head = BoardNode(fens[0])
     curr = head
-    for fen in fens[1:]:
+    for i, fen in enumerate(fens[1:]):
+        print(i, len(fens)-1, end='\r')
+        next_node = curr
         while curr is not None:
-            next_node = curr
-            if get_move(curr.board, fen) != '':
+            if curr.get_possbile_move(fen) != '':
                 new_node = BoardNode(fen)
                 new_node.prev = curr
                 curr.insert_next(new_node)
                 next_node = new_node
                 break
-            curr = next_node
+            curr = curr.prev
+        curr = next_node
     return head
 
 def get_fen_list(node : BoardNode) -> list[str]:
@@ -173,6 +173,19 @@ def get_fen_list(node : BoardNode) -> list[str]:
     for next_node in node.next:
         out += get_fen_list(next_node)
     return out
+
+# TODO: include captions in the json
+def get_json_fen_tree(tree : BoardNode) -> str:
+    def to_dict(node : BoardNode) -> dict:
+        out = {
+            "fen": node.fen,
+            "time": node.time,
+            "next": []
+        }
+        for next_node in node.next:
+            out["next"].append(to_dict(next_node))
+        return out
+    return json.dumps(to_dict(tree))
 
 def extract_fens_from_video(video):
     
@@ -250,7 +263,17 @@ def run_extracter(video_capture, output_name):
 def is_valid_url(url):
     regex = re.compile(r'^(?:http|ftp)s?://', re.IGNORECASE)
     return re.match(regex, url) is not None
-    
+
+def extract_from_url(url):
+    if not is_valid_url(url):
+        return {"error": url + " is not a valid URL"}
+    video = get_direct_video_url(url)
+    video_cap = cv2.VideoCapture(video)
+    fens = extract_fens_from_video(video_cap)
+    if not fens:
+        return {"error": "Error retrieving video"}
+    tree = get_fen_tree(fens)
+    return get_json_fen_tree(tree)
 
 def main():
     parser = argparse.ArgumentParser(description="Download and extract YouTube videos.")
@@ -294,10 +317,14 @@ def main():
         with open(args.fenlist, "r") as file:
             fens = file.readlines()
             fens = [fen.strip() for fen in fens]
-            filtered_fens = filter_FENs(fens)
+            print(f"Filtering {len(fens)} FENs")
+            tree = get_fen_tree(fens)
+            print("Listing fens")
+            # filtered_fens = get_fen_list(tree)
         with open(args.output_path, "w") as file:
-            for fen in filtered_fens:
-                file.write(f"{fen}\n")
+            # for fen in filtered_fens:
+            #     file.write(f"{fen}\n")
+            file.write(get_json_fen_tree(tree))
     else:
         parser.print_help()
 

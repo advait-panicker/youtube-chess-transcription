@@ -1,0 +1,6 @@
+pytube==15.0.0
+yt-dlp==2024.7.1
+opencv-python==4.10.0.84
+pillow==10.4.0
+tensorflowchessbot @ git+https://github.com/advait-panicker/tensorflow_chessbot.git@08522803b618b3d7543863a9fbf2781e43203deb
+python-chess==1.999
